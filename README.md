@@ -18,7 +18,7 @@ python3 -m pip install -r requirements.txt
 ## Folder structure
 
 - `algo`: algorithms for estimating the Pareto front (Benson, Chord, NLS, and OLS)
-- `env`: environments (Deep Sea Tresure and Bonus World)
+- `env`: environments (Deep Sea Treasure and Bonus World)
 
 
 ## Generating the graphs
@@ -29,4 +29,4 @@ To generate the graphs in the paper, run:
 python3 graphs.py
 ```
 
-This takes about three minutes. Figures are saved in the subfolder `figs`.
+This takes about three minutes. Figures are saved in the subfolder `fig`.

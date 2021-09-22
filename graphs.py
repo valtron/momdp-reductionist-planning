@@ -65,7 +65,7 @@ def graph_queries_vs_epsilon(outdir):
 		if SHOW_FIGS:
 			plt.show()
 		else:
-			fig.savefig(outdir / 'queries-{}.svg'.format(env_name))
+			fig.savefig(outdir / 'queries-{}.pdf'.format(env_name))
 
 def graph_hypervolume_vs_queries(outdir):
 	# make graphs showing how hypervolume grows as a function of queries
@@ -123,7 +123,7 @@ def graph_hypervolume_vs_queries(outdir):
 		if SHOW_FIGS:
 			plt.show()
 		else:
-			plt.savefig(outdir / 'hv-{}.svg'.format(env_name))
+			fig.savefig(outdir / 'hv-{}.pdf'.format(env_name))
 
 def sweep_epsilons(algo_module, env_module, epsilons):
 	true_pf = env_module.true_pareto_front()
@@ -166,7 +166,7 @@ def graph_pareto_fronts(outdir):
 		if SHOW_FIGS:
 			plt.show()
 		else:
-			plt.savefig(outdir / 'pf-{}.svg'.format(algo_name))
+			fig.savefig(outdir / 'pf-{}.pdf'.format(algo_name))
 
 def estimate_pf(env_module, algo_module, epsilon):
 	transitions, rewards, start_distribution = mdp_to_matrices(env_module.Env)

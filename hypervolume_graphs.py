@@ -82,7 +82,7 @@ def main():
 		if SHOW_FIGS:
 			plt.show()
 		else:
-			fig.savefig(outdir / 'hv-scalarizations-{}-{}runs.svg'.format(
+			fig.savefig(outdir / 'hv-scalarizations-{}-{}runs.pdf'.format(
 				exp['env_name'], exp['runs'],
 			))
 
