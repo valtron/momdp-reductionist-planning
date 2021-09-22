@@ -1,6 +1,7 @@
 import numpy as np
+from joblib import Parallel
 from scipy.optimize import linprog
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 def get_outcome_space_bbox(comb, k):
 	min_returns = np.array([comb(-e) for e in np.eye(k)])
@@ -101,20 +102,21 @@ def mdp_to_matrices(mdp):
 	# Given a simulator of a finite, deterministic MDP,
 	# construct the transition, reward, and state distribution matrices.
 	
+	assert mdp.deterministic
+	
 	next_states = []
 	rewards = []
 	
-	s0 = mdp.start_state
 	state_map = {}
-	n_actions = len(mdp.actions)
+	n_actions = mdp.num_actions
 	
 	def handle_state(s):
 		seen = (s in state_map)
 		if not seen:
 			s_i = len(state_map)
 			state_map[s] = s_i
-			for a in mdp.actions:
-				sp, r = mdp.transition(s, a)
+			for a in range(n_actions):
+				r, sp = mdp.sample_transition(None, s, a)
 				sp_i = handle_state(sp)
 				sa_i = s_i * n_actions + a
 				if len(next_states) <= sa_i:
@@ -124,7 +126,7 @@ def mdp_to_matrices(mdp):
 				rewards[sa_i] = r
 		return state_map[s]
 	
-	s0_i = handle_state(mdp.start_state)
+	s0_i = handle_state(mdp.sample_start(None))
 	start_distribution = np.zeros((len(state_map),))
 	start_distribution[s0_i] = 1
 	
@@ -187,3 +189,23 @@ class CountCalls(object):
 	def counts():
 		"Return a dict of {function: # of calls} for all registered functions."
 		return dict([(f, CountCalls.count(f)) for f in CountCalls.__instances])
+
+class ProgressParallel(Parallel):
+	"""
+		Progress bar for `joblib.Parallel`: https://stackoverflow.com/a/61900501/1329615
+	"""
+	
+	def __init__(self, use_tqdm = True, total = None, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self._use_tqdm = use_tqdm
+		self._total = total
+	
+	def __call__(self, *args, **kwargs):
+		with tqdm(disable = not self._use_tqdm, total = self._total) as self._pbar:
+			return super().__call__(*args, **kwargs)
+	
+	def print_progress(self):
+		if self._total is None:
+			self._pbar.total = self.n_dispatched_tasks
+		self._pbar.n = self.n_completed_tasks
+		self._pbar.refresh()

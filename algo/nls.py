@@ -4,7 +4,10 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt, patches
 
 from env import deep_sea_treasure
-from common import LPMDPSolver, deduplicate_and_sort, get_outcome_space_bbox, make_linear_comb, dummy_progress
+from common import (
+	LPMDPSolver, deduplicate_and_sort, get_outcome_space_bbox,
+	make_linear_comb, dummy_progress, mdp_to_matrices,
+)
 
 def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
 	# Estimates the Pareto front using linear scalarizations.
@@ -68,8 +71,8 @@ def main():
 	
 	epsilon = 1 * np.array([1, 1], dtype = np.float64)
 	
-	gamma = 0.98
-	transitions, rewards, start_distribution = deep_sea_treasure.get_mdp()
+	gamma = deep_sea_treasure.Env.gamma
+	transitions, rewards, start_distribution = mdp_to_matrices(deep_sea_treasure.Env)
 	mdp_solver = LPMDPSolver(transitions, start_distribution, gamma)
 	comb = make_linear_comb(mdp_solver, rewards, gamma)
 	true_pf = deep_sea_treasure.true_pareto_front()
@@ -86,7 +89,7 @@ def main():
 		ax.add_patch(patches.Rectangle(point, -epsilon[0], -epsilon[1], facecolor = 'red', alpha = 0.1))
 	
 	plt.plot(estimated_pf[:,0], estimated_pf[:,1], 'b-')
-	plt.plot(estimated_pf[:,0], estimated_pf[:,1], 'bo', label = "Estimated PF (epsilon net)")
+	plt.plot(estimated_pf[:,0], estimated_pf[:,1], 'bo', label = "Estimated PF (NLS)")
 	plt.plot(true_pf[:,0], true_pf[:,1], 'r+', label = "True PF")
 	plt.legend()
 	plt.show()

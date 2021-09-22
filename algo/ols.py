@@ -6,7 +6,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt, patches
 
 from env import deep_sea_treasure
-from common import LPMDPSolver, deduplicate_and_sort, make_linear_comb, dummy_progress
+from common import LPMDPSolver, deduplicate_and_sort, make_linear_comb, dummy_progress, mdp_to_matrices
 
 def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
 	# Estimates the Pareto front using Optimistic Linear Support
@@ -19,16 +19,7 @@ def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
 	W = []
 	
 	with progress() as pbar:
-		for w in np.eye(k):
-			S.append(comb(w))
-			pbar.update(1)
-			W.append(w)
-		
-		w = normal(np.array(S))
-		w /= np.sum(w)
-		assert np.min(w) >= 0
-		
-		Q = [QueueItem(np.inf, w, maxValue(S, w))]
+		Q = [QueueItem(np.inf, w) for w in np.eye(k)]
 		
 		while Q:
 			Q = sorted(Q)
@@ -50,7 +41,7 @@ def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
 			Wdel = [item.weight]
 			Qkeep = []
 			for other_item in Q:
-				if other_item.weight @ outcome > other_item.min_value:
+				if other_item.weight @ outcome > maxValue(S, other_item.weight):
 					Wdel.append(other_item.weight)
 				else:
 					Qkeep.append(other_item)
@@ -66,7 +57,7 @@ def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
 				delta = maxValueLP(w, S, W) - w_value
 				deltas.append(delta)
 				if delta > epsilon:
-					Q.append(QueueItem(delta, w, w_value))
+					Q.append(QueueItem(delta, w))
 	
 	return np.array(S)
 
@@ -133,6 +124,9 @@ def maxValueLP(w, S, W):
 	# s.t. W[i].v <= V_S*(W[i])
 	values = np.array([maxValue(S, w) for w in W])
 	res = scipy.optimize.linprog(-w, np.array(W), values, bounds = (None, None))
+	if res.status == 3:
+		# unbounded
+		return np.inf
 	assert res.success, res.message
 	return w @ res.x
 
@@ -147,6 +141,8 @@ def argmaxValues(S, w):
 
 def maxValue(S, w):
 	# V_S*(w) (defn. 17, p. 38)
+	if len(S) == 0:
+		return -np.inf
 	return max(w @ outcome for outcome in S)
 
 def normal(points):
@@ -155,10 +151,9 @@ def normal(points):
 	return ns[:,0]
 
 class QueueItem:
-	def __init__(self, priority, weight, min_value):
+	def __init__(self, priority, weight):
 		self.priority = priority
 		self.weight = weight
-		self.min_value = min_value
 	
 	def __lt__(self, other):
 		return self.priority < other.priority
@@ -183,8 +178,8 @@ def test_sphere():
 def test_dst():
 	epsilon = 1 * np.array([1, 1], dtype = np.float64)
 	
-	gamma = 0.98
-	transitions, rewards, start_distribution = deep_sea_treasure.get_mdp()
+	gamma = deep_sea_treasure.Env.gamma
+	transitions, rewards, start_distribution = mdp_to_matrices(deep_sea_treasure.Env)
 	mdp_solver = LPMDPSolver(transitions, start_distribution, gamma)
 	comb = make_linear_comb(mdp_solver, rewards, gamma)
 	true_pf = deep_sea_treasure.true_pareto_front()

@@ -1,13 +1,11 @@
 import enum
 import numpy as np
 
-from common import get_pareto_optimal, mdp_to_matrices
+import common
 
 # "Bonus World" environment from
 # "Softmax exploration strategies for multiobjective reinforcement learning"
 # https://www.sciencedirect.com/science/article/abs/pii/S0925231217310974
-
-gamma = 0.95
 
 def true_pareto_front():
 	# Undiscounted returns
@@ -33,26 +31,30 @@ def true_pareto_front():
 	# Apply discounting
 	for i in range(len(pf)):
 		n_steps = -pf[i,2]
-		pf[i,:2] *= gamma**(n_steps - 1)
-		pf[i,2] = -(1 - gamma**n_steps)/(1 - gamma)
+		pf[i,:2] *= Env.gamma**(n_steps - 1)
+		pf[i,2] = -(1 - Env.gamma**n_steps)/(1 - Env.gamma)
 	
-	pf = pf[sorted(get_pareto_optimal(pf))]
+	pf = pf[sorted(common.get_pareto_optimal(pf))]
 	return pf
 
-def get_mdp():
-	return mdp_to_matrices(BonusWorld())
-
-class BonusWorld:
-	def __init__(self):
-		self.start_state = (1, 1, 1)
-		self.actions = [Action.Up, Action.Down, Action.Left, Action.Right]
+class Env:
+	gamma = 0.95
+	feature_ranges = np.array([
+		[1, 10],
+		[1, 10],
+		[1, 3],
+	], dtype = np.float32)
+	k = 3
+	num_actions = 4
+	deterministic = True
 	
-	def transition(self, s, a):
+	@classmethod
+	def sample_transition(cls, rng, s, a):
 		y, x, bonus_multiplier = s
 		
 		if (y, x) in OBJECTIVES:
 			# Terminal state
-			return s, (0, 0, 0)
+			return (0, 0, 0), s
 		
 		yp, xp = grid_move(y, x, a)
 		
@@ -73,7 +75,21 @@ class BonusWorld:
 		else:
 			r = (0, 0, -1)
 		
-		return (yp, xp, bonus_multiplier), r
+		return r, (yp, xp, bonus_multiplier)
+	
+	@classmethod
+	def sample_start(cls, rng):
+		return (1, 1, 1)
+	
+	@classmethod
+	def sample_state(cls, rng):
+		return rng.choice(OCCUPIABLE)
+	
+	@classmethod
+	def terminal_value(cls, s):
+		if (s[0], s[1]) in OBJECTIVES:
+			return np.array([0, 0, 0], dtype = np.float32)
+		return None
 
 class Action(enum.IntEnum):
 	Up = 0
@@ -82,11 +98,11 @@ class Action(enum.IntEnum):
 	Right = 3
 
 def grid_move(y, x, a):
-	if a is Action.Up:
+	if a == Action.Up:
 		if y > 1: y -= 1
-	elif a is Action.Down:
+	elif a == Action.Down:
 		if y < 9: y += 1
-	elif a is Action.Left:
+	elif a == Action.Left:
 		if x > 1: x -= 1
 	else:
 		if x < 9: x += 1
@@ -102,4 +118,11 @@ PITS = {
 OBJECTIVES = {
 	(9, 1), (9, 3), (9, 5), (9, 7), (9, 9),
 	(1, 9), (3, 9), (5, 9), (7, 9),
+}
+OCCUPIABLE = {
+	(y, x, b)
+	for y in range(1, 9 + 1)
+	for x in range(1, 9 + 1)
+	for b in [1, 2]
+	if not ((y, x) in WALLS or (y, x) in PITS)
 }

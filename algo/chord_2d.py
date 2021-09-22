@@ -5,7 +5,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt, patches
 
 from env import deep_sea_treasure
-from common import LPMDPSolver, deduplicate_and_sort, make_linear_comb, dummy_progress
+from common import LPMDPSolver, deduplicate_and_sort, make_linear_comb, dummy_progress, mdp_to_matrices
 
 # 2D Chord algorithm
 # "How good is the Chord algorithm?" https://arxiv.org/abs/1309.7084
@@ -60,8 +60,8 @@ def line_intersection(a, da, b, db):
 def main():
 	epsilon = 1 * np.array([1, 1], dtype = np.float64)
 	
-	gamma = 0.98
-	transitions, rewards, start_distribution = deep_sea_treasure.get_mdp()
+	gamma = deep_sea_treasure.Env.gamma
+	transitions, rewards, start_distribution = mdp_to_matrices(deep_sea_treasure.Env)
 	mdp_solver = LPMDPSolver(transitions, start_distribution, gamma)
 	comb = make_linear_comb(mdp_solver, rewards, gamma)
 	true_pf = deep_sea_treasure.true_pareto_front()

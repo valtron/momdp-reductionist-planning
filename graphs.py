@@ -7,7 +7,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from env import deep_sea_treasure, bonus_world
-from common import LPMDPSolver, CMDPSolver, make_linear_comb, deduplicate_and_sort, mdp_to_matrices, FlowPolytope
+from common import LPMDPSolver, make_linear_comb, deduplicate_and_sort, mdp_to_matrices, FlowPolytope
 from algo import benson, chord_2d, nls, ols
 
 ENVS = [
@@ -25,7 +25,7 @@ ALGOS = {
 SHOW_FIGS = False
 
 def main():
-	outdir = Path('figs')
+	outdir = Path('fig')
 	outdir.mkdir(exist_ok = True)
 	graph_queries_vs_epsilon(outdir)
 	graph_hypervolume_vs_queries(outdir)
@@ -65,7 +65,7 @@ def graph_queries_vs_epsilon(outdir):
 		if SHOW_FIGS:
 			plt.show()
 		else:
-			plt.savefig(outdir / 'queries-{}.svg'.format(env_name))
+			fig.savefig(outdir / 'queries-{}.svg'.format(env_name))
 
 def graph_hypervolume_vs_queries(outdir):
 	# make graphs showing how hypervolume grows as a function of queries
@@ -127,7 +127,7 @@ def graph_hypervolume_vs_queries(outdir):
 
 def sweep_epsilons(algo_module, env_module, epsilons):
 	true_pf = env_module.true_pareto_front()
-	ref = np.min(true_pf, axis = 0)
+	ref = np.min(true_pf, axis = 0) - 1e-3
 	
 	data = []
 	for epsilon in tqdm(epsilons):
@@ -169,10 +169,10 @@ def graph_pareto_fronts(outdir):
 			plt.savefig(outdir / 'pf-{}.svg'.format(algo_name))
 
 def estimate_pf(env_module, algo_module, epsilon):
-	transitions, rewards, start_distribution = env_module.get_mdp()
+	transitions, rewards, start_distribution = mdp_to_matrices(env_module.Env)
 	true_pf = env_module.true_pareto_front()
-	gamma = env_module.gamma
-	k = rewards.shape[1]
+	gamma = env_module.Env.gamma
+	k = env_module.Env.k
 	H = 1/(1 - gamma)
 	
 	if algo_module is benson:
@@ -203,7 +203,7 @@ def hypervolume(ref, points):
 	return hull.volume
 
 def estimated_pf_hull(ref, points):
-	assert np.all(points >= (ref - 1e-5)), np.min(points - ref)
+	assert np.all(points >= ref), np.min(points - ref)
 	points = np.maximum(points, ref)
 	
 	all_points = [[ref], points]
