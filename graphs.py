@@ -1,13 +1,13 @@
 import warnings
 import numpy as np
-import itertools
-from scipy.spatial import ConvexHull
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from pathlib import Path
 
 from env import deep_sea_treasure, bonus_world
-from common import LPMDPSolver, make_linear_comb, deduplicate_and_sort, mdp_to_matrices, FlowPolytope
+from common import (
+	LPMDPSolver, make_linear_comb, deduplicate_and_sort, mdp_to_matrices, FlowPolytope, hypervolume,
+)
 from algo import benson, chord_2d, nls, ols
 
 ENVS = [
@@ -197,28 +197,6 @@ def estimate_pf(env_module, algo_module, epsilon):
 			num_queries -= 2 * k
 	
 	return deduplicate_and_sort(estimated_pf), num_queries
-
-def hypervolume(ref, points):
-	hull = estimated_pf_hull(ref, points)
-	return hull.volume
-
-def estimated_pf_hull(ref, points):
-	assert np.all(points >= ref), np.min(points - ref)
-	points = np.maximum(points, ref)
-	
-	all_points = [[ref], points]
-	
-	# Project each point onto each (1 .. k-1)-dimensional boundary
-	k = ref.shape[0]
-	idxs = list(range(k))
-	for i in range(1, k):
-		for boundary in itertools.combinations(idxs, i):
-			boundary = list(boundary)
-			projected = points.copy()
-			projected[:, boundary] = ref[boundary]
-			all_points.append(projected)
-	
-	return ConvexHull(np.concatenate(all_points, axis = 0))
 
 if __name__ == '__main__':
 	main()

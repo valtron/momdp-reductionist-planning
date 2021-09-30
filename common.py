@@ -1,4 +1,6 @@
+import itertools
 import numpy as np
+from scipy.spatial import ConvexHull
 from joblib import Parallel
 from scipy.optimize import linprog
 from tqdm.auto import tqdm
@@ -209,3 +211,67 @@ class ProgressParallel(Parallel):
 			self._pbar.total = self.n_dispatched_tasks
 		self._pbar.n = self.n_completed_tasks
 		self._pbar.refresh()
+
+class ScalarizedEnv:
+	def __init__(self, env, w):
+		self.env = env
+		self.w = w
+	
+	def sample_transition(self, rng, s, a):
+		r, sp = self.env.sample_transition(rng, s, a)
+		return self._scalarize(r), sp
+	
+	def terminal_value(self, s):
+		v = self.env.terminal_value(s)
+		if v is None:
+			return None
+		return self._scalarize(v)
+	
+	def __getattr__(self, attr):
+		return getattr(self.env, attr)
+	
+	def _scalarize(self, r: np.ndarray) -> float:
+		return r @ self.w
+
+def evaluate(policy, env, *, delta = 0.01, m = 100, rng = None):
+	outcomes = []
+	max_steps = int(np.ceil(np.log(delta) / np.log(env.gamma)))
+	if rng is None:
+		rng = np.random.default_rng(0)
+	for _ in tqdm(range(m)):
+		outcome = np.zeros(env.k)
+		s = env.sample_start(rng)
+		for t in range(max_steps):
+			value = env.terminal_value(s)
+			if value is not None:
+				outcome += value * env.gamma**t
+				break
+			a = policy(rng, s)
+			r, s = env.sample_transition(rng, s, a)
+			outcome += r * env.gamma**t
+		outcomes.append(outcome)
+	return np.mean(outcomes, axis = 0)
+
+def hypervolume(ref, points):
+	hull = estimated_pf_hull(ref, points)
+	return hull.volume
+
+def estimated_pf_hull(ref, points):
+	# TODO: Might just be easier to use `cdd`
+	
+	assert np.all(points >= ref), np.min(points - ref)
+	points = np.maximum(points, ref)
+	
+	all_points = [[ref], points]
+	
+	# Project each point onto each (1 .. k-1)-dimensional boundary
+	k = ref.shape[0]
+	idxs = list(range(k))
+	for i in range(1, k):
+		for boundary in itertools.combinations(idxs, i):
+			boundary = list(boundary)
+			projected = points.copy()
+			projected[:, boundary] = ref[boundary]
+			all_points.append(projected)
+	
+	return ConvexHull(np.concatenate(all_points, axis = 0))
