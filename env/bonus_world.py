@@ -1,7 +1,7 @@
 import enum
 import numpy as np
 
-import common
+from common import pareto
 
 # "Bonus World" environment from
 # "Softmax exploration strategies for multiobjective reinforcement learning"
@@ -31,98 +31,98 @@ def true_pareto_front():
 	# Apply discounting
 	for i in range(len(pf)):
 		n_steps = -pf[i,2]
-		pf[i,:2] *= Env.gamma**(n_steps - 1)
-		pf[i,2] = -(1 - Env.gamma**n_steps)/(1 - Env.gamma)
+		pf[i,:2] *= gamma**(n_steps - 1)
+		pf[i,2] = -(1 - gamma**n_steps)/(1 - gamma)
 	
-	pf = pf[sorted(common.get_pareto_optimal(pf))]
+	pf = pf[pareto.is_non_dominated(pf)]
 	return pf
 
-class Env:
-	gamma = 0.95
-	feature_ranges = np.array([
-		[1, 10],
-		[1, 10],
-		[1, 3],
-	], dtype = np.float32)
-	k = 3
-	num_actions = 4
-	deterministic = True
-	
-	@classmethod
-	def sample_transition(cls, rng, s, a):
-		y, x, bonus_multiplier = s
-		
-		if (y, x) in OBJECTIVES:
-			# Terminal state
-			return (0, 0, 0), s
-		
-		yp, xp = grid_move(y, x, a)
-		
-		# Walls
-		if (yp, xp) in WALLS:
-			yp, xp = (y, x)
-		
-		# Pits
-		if (yp, xp) in PITS:
-			yp, xp = (1, 1)
-		
-		# Bonus
-		if (yp, xp) == (4, 4):
-			bonus_multiplier = 2
-		
-		if (yp, xp) in OBJECTIVES:
-			r = (yp * bonus_multiplier, xp * bonus_multiplier, -1)
-		else:
-			r = (0, 0, -1)
-		
-		return r, (yp, xp, bonus_multiplier)
-	
-	@classmethod
-	def sample_start(cls, rng):
-		return (1, 1, 1)
-	
-	@classmethod
-	def sample_state(cls, rng):
-		return rng.choice(OCCUPIABLE)
-	
-	@classmethod
-	def terminal_value(cls, s):
-		if (s[0], s[1]) in OBJECTIVES:
-			return np.array([0, 0, 0], dtype = np.float32)
-		return None
+name = __name__
+gamma = 0.95
+feature_ranges = np.array([
+	[1, 10],
+	[1, 10],
+	[1, 3],
+], dtype = np.float32)
+k = 3
+num_actions = 4
+deterministic_start = True
+deterministic_transitions = True
+deterministic = deterministic_transitions and deterministic_start
+min_return = np.array([0, 0, -1/(1 - gamma)], dtype = np.float32)
+max_return = np.max(true_pareto_front(), axis = 0).astype(np.float32)
 
-class Action(enum.IntEnum):
+def sample_transition(rng, s, a):
+	y, x, bonus_multiplier = s
+	
+	if (y, x) in _OBJECTIVES:
+		# Terminal state
+		return np.array([0, 0, 0], dtype = np.float32), s
+	
+	yp, xp = grid_move(y, x, a)
+	
+	# Walls
+	if (yp, xp) in _WALLS:
+		yp, xp = (y, x)
+	
+	# Pits
+	if (yp, xp) in _PITS:
+		yp, xp = (1, 1)
+	
+	# Bonus
+	if (yp, xp) == (4, 4):
+		bonus_multiplier = 2
+	
+	if (yp, xp) in _OBJECTIVES:
+		r = [yp * bonus_multiplier, xp * bonus_multiplier, -1]
+	else:
+		r = [0, 0, -1]
+	
+	return np.array(r, dtype = np.float32), (yp, xp, bonus_multiplier)
+
+def sample_start(rng):
+	return (1, 1, 1)
+
+def sample_state(rng):
+	return rng.choice(_OCCUPIABLE)
+
+def terminal_value(s):
+	if (s[0], s[1]) in _OBJECTIVES:
+		return np.array([0, 0, 0], dtype = np.float32)
+	return None
+
+class _Action(enum.IntEnum):
 	Up = 0
 	Down = 1
 	Left = 2
 	Right = 3
 
 def grid_move(y, x, a):
-	if a == Action.Up:
+	if a == _Action.Up:
 		if y > 1: y -= 1
-	elif a == Action.Down:
+	elif a == _Action.Down:
 		if y < 9: y += 1
-	elif a == Action.Left:
+	elif a == _Action.Left:
 		if x > 1: x -= 1
 	else:
 		if x < 9: x += 1
 	return y, x
 
-WALLS = {
+_WALLS = {
 	(3, 3), (3, 4), (4, 3),
 }
-PITS = {
+_PITS = {
 	(8, 2), (8, 4), (8, 6),
 	(2, 8), (4, 8), (6, 8),
 }
-OBJECTIVES = {
+_OBJECTIVES = {
 	(9, 1), (9, 3), (9, 5), (9, 7), (9, 9),
 	(1, 9), (3, 9), (5, 9), (7, 9),
 }
-OCCUPIABLE = {
+_OCCUPIABLE = {
 	(y, x, b)
 	for y in range(1, 9 + 1)
 	for x in range(1, 9 + 1)
 	for b in [1, 2]
-	if not ((y, x) in WALLS or (y, x) in PITS)
+	if not ((y, x) in _WALLS or (y, x) in _PITS)
 }

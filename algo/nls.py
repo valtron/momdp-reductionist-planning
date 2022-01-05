@@ -1,29 +1,24 @@
 import itertools
 import numpy as np
-from tqdm import tqdm
-from matplotlib import pyplot as plt, patches
 
-from env import deep_sea_treasure
-from common import (
-	LPMDPSolver, deduplicate_and_sort, get_outcome_space_bbox,
-	make_linear_comb, dummy_progress, mdp_to_matrices,
-)
+from common.misc import dummy_progress
 
-def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
+def estimate_pareto_front(solver, epsilon, *, progress = dummy_progress):
 	# Estimates the Pareto front using linear scalarizations.
 	k = epsilon.shape[0]
 	
 	# Get a bounding box on PF
-	min_outcomes, max_outcomes = get_outcome_space_bbox(comb, k)
-	ranges = max_outcomes - min_outcomes
+	min_returns = np.array([solver.solve_linear(-e) for e in np.eye(k)])
+	max_returns = np.array([solver.solve_linear(+e) for e in np.eye(k)])
+	ranges = np.max(max_returns, axis = 0) - np.min(min_returns, axis = 0)
 	
 	# `epsilon` is a vector, and can be non-uniform (different values for each dimension).
 	# To handle that, first divide the outcomes by `epsilon` component-wise
-	# (this is also done when calling `comb`, see lower down.)
+	# (this is also done when calling `solver.solve_linear`, see lower down.)
 	# so that, in the rescaled outcomes, the (new) epsilon is uniformly 1.
 	# Then, uniformly scale the outcomes and new epsilon so that outcomes
 	# fall in [0, 1]^k. This actually only needs to be done for the epsilon
-	# because uniform scalings of the outcomes don't affect `comb`.
+	# because uniform scalings of the outcomes don't affect `solver.solve_linear`.
 	# (As a sanity check, note that if `epsilon` is uniform, this simplifies
 	# to `uniform_epsilon = epsilon / max(ranges)`.)
 	uniform_epsilon = 1/np.max(ranges / epsilon)
@@ -32,17 +27,16 @@ def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
 	uniform_epsilon /= (k - 1)/np.sqrt(k)
 	
 	estimated_pf = []
-	
-	for w in progress(iter_weights(k, uniform_epsilon)):
+	for w in progress(iter_weights_grid(k, uniform_epsilon)):
 		# Find optimal policy for linear scalarization `w`
 		# (As mentioned previously, the `1/epsilon` is to handle non-uniform epsilon.)
-		outcome = comb(w / epsilon)
+		outcome = solver.solve_linear(w / epsilon)
 		estimated_pf.append(outcome)
 	
 	estimated_pf = np.array(estimated_pf)
 	return estimated_pf
 
-class iter_weights:
+class iter_weights_grid:
 	# Iterates over an epsilon-net of the positive part of a k-sphere
 	
 	def __init__(self, k, epsilon):
@@ -67,17 +61,20 @@ class iter_weights:
 		return int(np.power(self.m + 1, self.k) - np.power(self.m, self.k))
 
 def main():
-	# Finds an epsilon-Pareto front using linear scalarizations and plots it.
+	from tqdm import tqdm
+	from matplotlib import pyplot as plt, patches
+	from env import deep_sea_treasure
+	from common.lp import TabularSolver
+	from common.misc import deduplicate_and_sort
 	
+	# Finds an epsilon-Pareto front using linear scalarizations and plots it.
+	env = deep_sea_treasure
 	epsilon = 1 * np.array([1, 1], dtype = np.float64)
 	
-	gamma = deep_sea_treasure.Env.gamma
-	transitions, rewards, start_distribution = mdp_to_matrices(deep_sea_treasure.Env)
-	mdp_solver = LPMDPSolver(transitions, start_distribution, gamma)
-	comb = make_linear_comb(mdp_solver, rewards, gamma)
-	true_pf = deep_sea_treasure.true_pareto_front()
+	solver = TabularSolver(env)
+	true_pf = env.true_pareto_front()
 	
-	estimated_pf = estimate_pareto_front(comb, epsilon, progress = tqdm)
+	estimated_pf = estimate_pareto_front(solver, epsilon, progress = tqdm)
 	estimated_pf = deduplicate_and_sort(estimated_pf)
 	
 	plt.ylabel("Discounted time penalty")

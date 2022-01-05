@@ -1,174 +1,111 @@
-import heapq
-import itertools
+from typing import Tuple
 import numpy as np
-import scipy
-from tqdm import tqdm
-from matplotlib import pyplot as plt, patches
 
-from env import deep_sea_treasure
-from common import LPMDPSolver, deduplicate_and_sort, make_linear_comb, dummy_progress, mdp_to_matrices
+from common import dualdesc
+from common.misc import dummy_progress, close_to_any
 
-def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
+def estimate_pareto_front(solver, epsilon, *, progress = dummy_progress):
 	# Estimates the Pareto front using Optimistic Linear Support
 	# http://roijers.info/pub/thesis.pdf
 	
 	k = epsilon.shape[0]
-	epsilon = np.min(epsilon)
-	
-	S = []
-	W = []
+	impl = OLS(None, epsilon)
 	
 	with progress() as pbar:
-		Q = [QueueItem(np.inf, w) for w in np.eye(k)]
-		
-		while Q:
-			Q = sorted(Q)
-			item = Q.pop()
-			pbar.set_postfix({ 'delta': item.priority })
-			
-			# (Near-)duplicate weights causes issues for `maxValueLP`
-			if any(np.allclose(item.weight, w) for w in W):
-				continue
-			
-			outcome = comb(item.weight)
+		while True:
+			wt, dt = impl.get_next_weight()
+			pbar.set_postfix({ 'd': dt })
+			if dt <= 1:
+				break
+			if close_to_any(wt, impl.W, 1e-6):
+				break
+			yt = solver.solve_linear(wt)
 			pbar.update(1)
-			W.append(item.weight)
-			
-			if any(np.allclose(outcome, s) for s in S):
-				continue
-			
-			# Remove obsolete weights from Q, put them in Wdel
-			Wdel = [item.weight]
-			Qkeep = []
-			for other_item in Q:
-				if other_item.weight @ outcome > maxValue(S, other_item.weight):
-					Wdel.append(other_item.weight)
-				else:
-					Qkeep.append(other_item)
-			Q = Qkeep
-			
-			ws = newCornerWeights(outcome, Wdel, S)
-			
-			S.append(outcome)
-			
-			deltas = []
-			for w in ws:
-				w_value = maxValue(S, w)
-				delta = maxValueLP(w, S, W) - w_value
-				deltas.append(delta)
-				if delta > epsilon:
-					Q.append(QueueItem(delta, w))
+			impl.W.append(wt)
+			impl.Y.append(yt)
 	
-	return np.array(S)
+	return np.array(impl.Y, dtype = np.float64)
 
-def newCornerWeights(outcome, Wdel, S):
-	Wnew = []
+class OLS:
+	def __init__(self, env, metric, *, approx = False):
+		self.env = env
+		self.k = metric.shape[0]
+		self.metric = metric
+		self.W = []
+		self.Y = []
+		self.approx = approx
 	
-	k = len(outcome)
-	fudge = 1e-8
-	
-	# In the paper, they iterate over all `k-1` combinations of the outcomes
-	# of all `w in Wdel` (`inter_outcome_combos = True`). I can't figure out
-	# if this is needed, but it seems to me that any new corner weight would
-	# be formed from `k-1` outcomes of a deleted corner weight and `outcome`.
-	inter_outcome_combos = False
-	
-	if inter_outcome_combos:
-		def iter_combos():
-			Vrel = list(itertools.chain(*(argmaxValues(S, w) for w in Wdel)))
-			for i in range(0, k): # [0, .., k-1]
-				yield from itertools.combinations(Vrel, i)
-	else:
-		def iter_combos():
-			for w in Wdel:
-				outcomes = argmaxValues(S, w)
-				for i in range(0, k): # [0, .., k-1]
-					yield from itertools.combinations(outcomes, i)
-	
-	for X in iter_combos():
-		for wc in cornerWeightsForOutcomes(k, [outcome, *X]):
-			if wc @ outcome >= maxValue(S, wc) - fudge:
-				Wnew.append(wc)
-	
-	return Wnew
-
-def cornerWeightsForOutcomes(k, outcomes):
-	idxs = list(range(k))
-	outcomes = np.array(outcomes)
-	
-	for boundary in itertools.combinations(idxs, len(outcomes)):
-		# `boundary` represents a boundary of the weight simplex,
-		# as a list of the indices of `w` that are not 0
-		boundary = list(boundary)
-		w = np.zeros(k)
+	def get_next_weight(self):
+		if len(self.W) < self.k:
+			return np.eye(self.k)[len(self.W)], np.inf
 		
-		outcomes_boundary = outcomes[:, boundary]
-		ns = scipy.linalg.null_space(outcomes_boundary - outcomes_boundary[0])
-		assert ns.shape[1] != 0
+		IAv, OAh = self._get_IA_OA()
+		# H-repr of IA
+		A, b = IAv.to_h().to_inequalities()
+		# Vertices of OA
+		V = OAh.to_v().Vc
 		
-		if ns.shape[1] > 1:
-			continue
+		# Find Hausdorff distance to IA of each OA vertex
+		with np.errstate(divide = 'ignore'):
+			d = np.max((V @ A.T - b) / (A @ self.metric), axis = 1)
 		
-		w[boundary] = ns[:,0]
-		if np.min(w) < 0:
-			if np.max(w) > 0:
-				# Intersection outside the weight simplex
-				continue
-			w *= -1
+		# Get OA vertex furthest from IA
+		i = np.argmax(d)
+		# project vertex of OA on IA
+		u = V[i] - d[i] * self.metric
+		# find a supporting hyperplane of u
+		w = np.clip(A[np.argmax(A @ u - b)], 0, np.inf)
+		w = w / np.linalg.norm(w)
 		
-		w /= np.sum(w)
-		yield w
-
-def maxValueLP(w, S, W):
-	# max_v w.v
-	# s.t. W[i].v <= V_S*(W[i])
-	values = np.array([maxValue(S, w) for w in W])
-	res = scipy.optimize.linprog(-w, np.array(W), values, bounds = (None, None))
-	if res.status == 3:
-		# unbounded
-		return np.inf
-	assert res.success, res.message
-	return w @ res.x
-
-def argmaxValues(S, w):
-	# V_S(w) (defn. 18, p. 38)
-	fudge = 1e-8
-	mx = maxValue(S, w)
-	return [
-		outcome for outcome in S
-		if w @ outcome >= mx - fudge
-	]
-
-def maxValue(S, w):
-	# V_S*(w) (defn. 17, p. 38)
-	if len(S) == 0:
-		return -np.inf
-	return max(w @ outcome for outcome in S)
-
-def normal(points):
-	ns = scipy.linalg.null_space(points - points[0])
-	assert ns.shape[1] == 1
-	return ns[:,0]
-
-class QueueItem:
-	def __init__(self, priority, weight):
-		self.priority = priority
-		self.weight = weight
+		return w, d[i]
 	
-	def __lt__(self, other):
-		return self.priority < other.priority
+	def _get_IA_OA(self) -> Tuple[dualdesc.VRepr, dualdesc.HRepr]:
+		W = np.array(self.W, dtype = np.float64)
+		Y = np.array(self.Y, dtype = np.float64)
+		
+		OAw = W
+		if self.approx:
+			# Calculate the smallest relative error `rel_err` s.t.
+			# `yi.wi >= y.wi - rel_err * (ymax - ymin).wi` for some `y in Y`
+			numer = np.sum((Y[:,:,None] - Y.T) * W.T, axis = 1)
+			denom = W @ (self.env.max_return - self.env.min_return)
+			rel_err = np.max(np.max(numer, axis = 0) / denom)
+			abs_err = rel_err * denom
+			
+			# Replace outcomes that were suboptimal for their scalarizations
+			Y = Y[np.argmax(Y @ W.T, axis = 0)]
+			# Inflate OA vertices by the estimated error
+			OAy = Y + abs_err[:,None] * W
+		else:
+			OAy = Y
+		
+		if self.approx:
+			# Intersect outer approximation with upper bound of outcome space
+			OAw = np.concatenate([OAw, np.eye(self.k)], axis = 0)
+			OAy = np.concatenate([OAy, np.diag(self.env.max_return)], axis = 0)
+		
+		# Inner approximation
+		IAv = dualdesc.VRepr(Y, -np.eye(self.k))
+		# Outer approximation
+		OAh = dualdesc.HRepr(OAw, np.sum(OAw * OAy, axis = 1))
+		
+		return IAv, OAh
 
 def main():
 	test_dst()
 	test_sphere()
 
 def test_sphere():
-	def comb(w):
-		w = np.maximum(w, 0)
-		return w / np.linalg.norm(w)
+	from tqdm import tqdm
+	from matplotlib import pyplot as plt
+	
+	class Solver:
+		def solve_linear(self, w):
+			w = np.maximum(w, 0)
+			return w / np.linalg.norm(w)
 	
 	epsilon = 0.1 * np.array([1, 1, 1], dtype = np.float64)
-	estimated_pf = estimate_pareto_front(comb, epsilon, progress = tqdm)
+	estimated_pf = estimate_pareto_front(Solver(), epsilon, progress = tqdm)
 	
 	fig = plt.figure()
 	ax = fig.add_subplot(projection = '3d')
@@ -176,15 +113,20 @@ def test_sphere():
 	plt.show()
 
 def test_dst():
+	from tqdm import tqdm
+	from matplotlib import pyplot as plt, patches
+	
+	from env import deep_sea_treasure
+	from common.lp import TabularSolver
+	from common.misc import deduplicate_and_sort
+	
+	env = deep_sea_treasure
 	epsilon = 1 * np.array([1, 1], dtype = np.float64)
 	
-	gamma = deep_sea_treasure.Env.gamma
-	transitions, rewards, start_distribution = mdp_to_matrices(deep_sea_treasure.Env)
-	mdp_solver = LPMDPSolver(transitions, start_distribution, gamma)
-	comb = make_linear_comb(mdp_solver, rewards, gamma)
-	true_pf = deep_sea_treasure.true_pareto_front()
+	solver = TabularSolver(env)
+	true_pf = env.true_pareto_front()
 	
-	estimated_pf = estimate_pareto_front(comb, epsilon, progress = tqdm)
+	estimated_pf = estimate_pareto_front(solver, epsilon, progress = tqdm)
 	estimated_pf = deduplicate_and_sort(estimated_pf)
 	
 	plt.ylabel("Discounted time penalty")

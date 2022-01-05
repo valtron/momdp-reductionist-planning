@@ -21,7 +21,7 @@ class TileCoder:
 		mins = ranges[:,0]
 		maxs = ranges[:,1]
 		
-		tile_widths = (1 - 1 / ((tiling_dims - 1) * n_tilings + 1)) * (maxs - mins) / (tiling_dims - 1)
+		tile_widths = n_tilings / ((tiling_dims - 1) * n_tilings + 1) * (maxs - mins)
 		max_offsets = tile_widths * (1 - 1/n_tilings)
 		
 		self.d = d
@@ -38,6 +38,7 @@ class TileCoder:
 			x: float[*S, d]; S is an arbitary shape
 			return: int[*S, n_tilings]; indices of the active tiles
 		"""
+		x = np.asarray(x)
 		S = x.shape[:-1]
 		tmp = x[..., None] - self.offsets
 		tmp *= self.scales

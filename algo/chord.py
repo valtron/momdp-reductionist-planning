@@ -1,27 +1,27 @@
-import heapq
 import numpy as np
 import scipy
 from tqdm import tqdm
 from matplotlib import pyplot as plt, patches
 
 from env import deep_sea_treasure
-from common import LPMDPSolver, deduplicate_and_sort, make_linear_comb, dummy_progress, mdp_to_matrices
+from common.lp import TabularSolver
+from common.misc import deduplicate_and_sort, dummy_progress
 
-# 2D Chord algorithm
+# Chord algorithm
 # "How good is the Chord algorithm?" https://arxiv.org/abs/1309.7084
 
-def estimate_pareto_front(comb, epsilon, *, progress = dummy_progress):
+def estimate_pareto_front(solver, epsilon, *, progress = dummy_progress):
 	k = epsilon.shape[0]
 	assert k == 2, "only works for 2D"
 	with progress() as pbar:
-		a = comb([1, 0])
+		a = solver.solve_linear(np.array([1, 0], dtype = epsilon.dtype))
 		pbar.update(1)
-		b = comb([0, 1])
+		b = solver.solve_linear(np.array([0, 1], dtype = epsilon.dtype))
 		pbar.update(1)
 		c = np.maximum(a, b)
-		return np.array(chord(comb, a, b, c, epsilon, pbar))
+		return np.array(chord(solver, a, b, c, epsilon, pbar))
 
-def chord(comb, l, r, s, epsilon, pbar):
+def chord(solver, l, r, s, epsilon, pbar):
 	normal = np.array([r[1] - l[1], l[0] - r[0]])
 	p = (l + r) / 2
 	
@@ -30,18 +30,18 @@ def chord(comb, l, r, s, epsilon, pbar):
 	if ratio <= 1:
 		return [l, r]
 	
-	q = comb(normal)
+	q = solver.solve_linear(normal)
 	pbar.update(1)
 	
 	ratio = ratio_distance(normal, p, q, epsilon, l, r)
 	pbar.set_postfix({ 'ratio': ratio })
 	if ratio <= 1:
-		return [l, q, r]
+		return [l, r]
 	
 	sl = line_intersection(l, s - l, q, r - l)
 	sr = line_intersection(r, s - r, q, r - l)
-	ql = chord(comb, l, q, sl, epsilon, pbar)
-	qr = chord(comb, q, r, sr, epsilon, pbar)
+	ql = chord(solver, l, q, sl, epsilon, pbar)
+	qr = chord(solver, q, r, sr, epsilon, pbar)
 	
 	return ql + qr
 
@@ -58,15 +58,13 @@ def line_intersection(a, da, b, db):
 	return a + t[0] * da
 
 def main():
+	env = deep_sea_treasure
 	epsilon = 1 * np.array([1, 1], dtype = np.float64)
 	
-	gamma = deep_sea_treasure.Env.gamma
-	transitions, rewards, start_distribution = mdp_to_matrices(deep_sea_treasure.Env)
-	mdp_solver = LPMDPSolver(transitions, start_distribution, gamma)
-	comb = make_linear_comb(mdp_solver, rewards, gamma)
-	true_pf = deep_sea_treasure.true_pareto_front()
+	solver = TabularSolver(env)
+	true_pf = env.true_pareto_front()
 	
-	estimated_pf = estimate_pareto_front(comb, epsilon, progress = tqdm)
+	estimated_pf = estimate_pareto_front(solver, epsilon, progress = tqdm)
 	estimated_pf = deduplicate_and_sort(estimated_pf)
 	
 	plt.ylabel("Discounted time penalty")

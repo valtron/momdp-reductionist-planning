@@ -1,8 +1,6 @@
 import enum
 import numpy as np
 
-import common
-
 # "Deep Sea Treasure" environment from
 # "A distributional view on multi-objective policy optimization"
 # https://arxiv.org/pdf/2005.07513.pdf
@@ -15,70 +13,19 @@ def true_pareto_front():
 	
 	pf_vertices = []
 	# one vertex corresponding to each treasure location
-	for (row, col), value in TREASURES.items():
+	for (row, col), value in _TREASURES.items():
 		steps = row + col
 		# calculating second objective
 		obj2 = 0
 		discount = 1
 		for i in range(steps):
 			obj2 -= discount
-			discount *= Env.gamma
+			discount *= gamma
 		obj1 = value * discount
 		pf_vertices.append([obj1, obj2])
 	return np.array(pf_vertices)
 
-class Env:
-	gamma = 0.98
-	feature_ranges = np.array([
-		[0, 11],
-		[0, 10],
-	], dtype = np.float32)
-	k = 2
-	num_actions = 4
-	deterministic = True
-	
-	@classmethod
-	def sample_transition(cls, rng, s, a):
-		if s is None:
-			return np.array([0, 0], dtype = np.float32), s
-		y, x = s
-		value = TREASURES.get((y, x))
-		if value is not None:
-			return np.array([value, 0]), None
-		return np.array([0, -1]), grid_move(y, x, a)
-	
-	@classmethod
-	def sample_start(cls, rng):
-		return (0, 0)
-	
-	@classmethod
-	def sample_state(cls, rng):
-		return rng.choice(OCCUPIABLE)
-	
-	@classmethod
-	def terminal_value(cls, s):
-		if s is None:
-			return np.array([0, 0], dtype = np.float32)
-		return None
-
-class Action(enum.IntEnum):
-	Up = 0
-	Down = 1
-	Left = 2
-	Right = 3
-
-def grid_move(y, x, a):
-	if a == Action.Up:
-		if y >  0: y -= 1
-	elif a == Action.Down:
-		if y < 10: y += 1
-	elif a == Action.Left:
-		if x >  0: x -= 1
-	else:
-		if x <  9: x += 1
-	return y, x
-
-TREASURES = {
+_TREASURES = {
 	( 1, 0):  0.7,
 	( 2, 1):  8.2,
 	( 3, 2): 11.5,
@@ -91,7 +38,62 @@ TREASURES = {
 	(10, 9): 23.7,
 }
 
-OCCUPIABLE = sorted(set.union(*(
+_OCCUPIABLE = sorted(set.union(*(
 	{ (y, x) for y in range(y_max + 1) }
-	for y_max, x in TREASURES.keys()
+	for y_max, x in _TREASURES.keys()
 )))
+
+name = __name__
+gamma = 0.98
+feature_ranges = np.array([
+	[0, 11],
+	[0, 10],
+], dtype = np.float32)
+k = 2
+num_actions = 4
+deterministic_start = True
+deterministic_transitions = True
+deterministic = deterministic_transitions and deterministic_start
+states = [None] + _OCCUPIABLE
+min_return = np.array([0, -1/(1-gamma)], dtype = np.float32)
+max_return = np.max(true_pareto_front(), axis = 0).astype(np.float32)
+
+def sample_transition(rng, s, a):
+	if s is None:
+		return np.array([0, 0], dtype = np.float32), s
+	y, x = s
+	value = _TREASURES.get((y, x))
+	if value is not None:
+		return np.array([value, 0]), None
+	sp = _grid_move(y, x, a)
+	if sp not in _OCCUPIABLE:
+		sp = s
+	return np.array([0, -1]), sp
+
+def sample_start(rng):
+	return (0, 0)
+
+def sample_state(rng):
+	return rng.choice(_OCCUPIABLE)
+
+def terminal_value(s):
+	if s is None:
+		return np.array([0, 0], dtype = np.float32)
+	return None
+
+class _Action(enum.IntEnum):
+	Up = 0
+	Down = 1
+	Left = 2
+	Right = 3
+
+def _grid_move(y, x, a):
+	if a == _Action.Up:
+		if y >  0: y -= 1
+	elif a == _Action.Down:
+		if y < 10: y += 1
+	elif a == _Action.Left:
+		if x >  0: x -= 1
+	else:
+		if x <  9: x += 1
+	return y, x
