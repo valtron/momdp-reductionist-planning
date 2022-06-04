@@ -1,17 +1,20 @@
-import enum
+import sys
 import numpy as np
+
+from common import dualdesc as dd
+from common.so_solver import TabularSolver
 
 # "Deep Sea Treasure" environment from
 # "A distributional view on multi-objective policy optimization"
 # https://arxiv.org/pdf/2005.07513.pdf
 
-def true_pareto_front():
-	"""
-		Output: list of vectors that are on the Pareto front of the deep sea
-			treasure instance
-	"""
-	
-	pf_vertices = []
+name = "DeepSeaTreasure"
+gamma = 0.98
+horizon = np.inf
+k = 2
+
+def pareto_front_vertices():
+	pf = []
 	# one vertex corresponding to each treasure location
 	for (row, col), value in _TREASURES.items():
 		steps = row + col
@@ -22,8 +25,8 @@ def true_pareto_front():
 			obj2 -= discount
 			discount *= gamma
 		obj1 = value * discount
-		pf_vertices.append([obj1, obj2])
-	return np.array(pf_vertices)
+		pf.append([obj1, obj2])
+	return np.array(pf)
 
 _TREASURES = {
 	( 1, 0):  0.7,
@@ -43,22 +46,11 @@ _OCCUPIABLE = sorted(set.union(*(
 	for y_max, x in _TREASURES.keys()
 )))
 
-name = __name__
-gamma = 0.98
-feature_ranges = np.array([
-	[0, 11],
-	[0, 10],
-], dtype = np.float32)
-k = 2
 num_actions = 4
-deterministic_start = True
-deterministic_transitions = True
-deterministic = deterministic_transitions and deterministic_start
-states = [None] + _OCCUPIABLE
 min_return = np.array([0, -1/(1-gamma)], dtype = np.float32)
-max_return = np.max(true_pareto_front(), axis = 0).astype(np.float32)
+max_return = np.array([max(_TREASURES.values()), 0], dtype = np.float32)
 
-def sample_transition(rng, s, a):
+def transition(s, a):
 	if s is None:
 		return np.array([0, 0], dtype = np.float32), s
 	y, x = s
@@ -70,22 +62,7 @@ def sample_transition(rng, s, a):
 		sp = s
 	return np.array([0, -1]), sp
 
-def sample_start(rng):
-	return (0, 0)
-
-def sample_state(rng):
-	return rng.choice(_OCCUPIABLE)
-
-def terminal_value(s):
-	if s is None:
-		return np.array([0, 0], dtype = np.float32)
-	return None
-
-class _Action(enum.IntEnum):
-	Up = 0
-	Down = 1
-	Left = 2
-	Right = 3
+start = (0, 0)
 
 def _grid_move(y, x, a):
 	if a == _Action.Up:
@@ -97,3 +74,11 @@ def _grid_move(y, x, a):
 	else:
 		if x <  9: x += 1
 	return y, x
+
+class _Action:
+	Up = 0
+	Down = 1
+	Left = 2
+	Right = 3
+
+solver = TabularSolver(sys.modules[__name__])

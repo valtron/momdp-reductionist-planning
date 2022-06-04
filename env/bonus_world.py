@@ -1,13 +1,19 @@
-import enum
+import sys
 import numpy as np
 
-from common import pareto
+from common import dualdesc as dd
+from common.so_solver import TabularSolver
 
 # "Bonus World" environment from
 # "Softmax exploration strategies for multiobjective reinforcement learning"
 # https://www.sciencedirect.com/science/article/abs/pii/S0925231217310974
 
-def true_pareto_front():
+name = "BonusWorld"
+gamma = 0.95
+horizon = np.inf
+k = 3
+
+def pareto_front_vertices():
 	# Undiscounted returns
 	pf = np.array([
 		# The commented out ones are deterministic PO outcomes,
@@ -34,32 +40,20 @@ def true_pareto_front():
 		pf[i,:2] *= gamma**(n_steps - 1)
 		pf[i,2] = -(1 - gamma**n_steps)/(1 - gamma)
 	
-	pf = pf[pareto.is_non_dominated(pf)]
 	return pf
 
-name = __name__
-gamma = 0.95
-feature_ranges = np.array([
-	[1, 10],
-	[1, 10],
-	[1, 3],
-], dtype = np.float32)
-k = 3
 num_actions = 4
-deterministic_start = True
-deterministic_transitions = True
-deterministic = deterministic_transitions and deterministic_start
 min_return = np.array([0, 0, -1/(1 - gamma)], dtype = np.float32)
-max_return = np.max(true_pareto_front(), axis = 0).astype(np.float32)
+max_return = np.array([18, 18, 0], dtype = np.float32)
 
-def sample_transition(rng, s, a):
+def transition(s, a):
 	y, x, bonus_multiplier = s
 	
 	if (y, x) in _OBJECTIVES:
 		# Terminal state
 		return np.array([0, 0, 0], dtype = np.float32), s
 	
-	yp, xp = grid_move(y, x, a)
+	yp, xp = _grid_move(y, x, a)
 	
 	# Walls
 	if (yp, xp) in _WALLS:
@@ -80,24 +74,9 @@ def sample_transition(rng, s, a):
 	
 	return np.array(r, dtype = np.float32), (yp, xp, bonus_multiplier)
 
-def sample_start(rng):
-	return (1, 1, 1)
+start = (1, 1, 1)
 
-def sample_state(rng):
-	return rng.choice(_OCCUPIABLE)
-
-def terminal_value(s):
-	if (s[0], s[1]) in _OBJECTIVES:
-		return np.array([0, 0, 0], dtype = np.float32)
-	return None
-
-class _Action(enum.IntEnum):
-	Up = 0
-	Down = 1
-	Left = 2
-	Right = 3
-
-def grid_move(y, x, a):
+def _grid_move(y, x, a):
 	if a == _Action.Up:
 		if y > 1: y -= 1
 	elif a == _Action.Down:
@@ -107,6 +86,12 @@ def grid_move(y, x, a):
 	else:
 		if x < 9: x += 1
 	return y, x
+
+class _Action:
+	Up = 0
+	Down = 1
+	Left = 2
+	Right = 3
 
 _WALLS = {
 	(3, 3), (3, 4), (4, 3),
@@ -126,3 +111,5 @@ _OCCUPIABLE = {
 	for b in [1, 2]
 	if not ((y, x) in _WALLS or (y, x) in _PITS)
 }
+
+solver = TabularSolver(sys.modules[__name__])

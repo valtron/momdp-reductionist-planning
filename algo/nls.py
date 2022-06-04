@@ -1,95 +1,24 @@
-import itertools
 import numpy as np
 
-from common.misc import dummy_progress
+from common import dualdesc as dd, misc, scalarization as scal
 
-def estimate_pareto_front(solver, epsilon, *, progress = dummy_progress):
-	# Estimates the Pareto front using linear scalarizations.
-	k = epsilon.shape[0]
-	
-	# Get a bounding box on PF
-	min_returns = np.array([solver.solve_linear(-e) for e in np.eye(k)])
-	max_returns = np.array([solver.solve_linear(+e) for e in np.eye(k)])
-	ranges = np.max(max_returns, axis = 0) - np.min(min_returns, axis = 0)
-	
-	# `epsilon` is a vector, and can be non-uniform (different values for each dimension).
-	# To handle that, first divide the outcomes by `epsilon` component-wise
-	# (this is also done when calling `solver.solve_linear`, see lower down.)
-	# so that, in the rescaled outcomes, the (new) epsilon is uniformly 1.
-	# Then, uniformly scale the outcomes and new epsilon so that outcomes
-	# fall in [0, 1]^k. This actually only needs to be done for the epsilon
-	# because uniform scalings of the outcomes don't affect `solver.solve_linear`.
-	# (As a sanity check, note that if `epsilon` is uniform, this simplifies
-	# to `uniform_epsilon = epsilon / max(ranges)`.)
-	uniform_epsilon = 1/np.max(ranges / epsilon)
-	# Inflation factor from the proof
-	# TODO: Could calculate a smaller value using `ranges`
-	uniform_epsilon /= (k - 1)/np.sqrt(k)
-	
-	estimated_pf = []
-	for w in progress(iter_weights_grid(k, uniform_epsilon)):
-		# Find optimal policy for linear scalarization `w`
-		# (As mentioned previously, the `1/epsilon` is to handle non-uniform epsilon.)
-		outcome = solver.solve_linear(w / epsilon)
-		estimated_pf.append(outcome)
-	
-	estimated_pf = np.array(estimated_pf)
-	return estimated_pf
+name = "NLS"
+color = 'b'
+deterministic = False
+inner_approximation = True
 
-class iter_weights_grid:
-	# Iterates over an epsilon-net of the positive part of a k-sphere
+class Algo:
+	def __init__(self, lo, hi, *, rng):
+		k = len(lo)
+		self.IA = dd.Polytope.FromGenerators(lo[None,:], -np.eye(k))
+		self.C = misc.incremental_simplex_covering(k, rng)
 	
-	def __init__(self, k, epsilon):
-		self.k = k
-		self.theta_max = np.arctan(np.sqrt(k - 1))
-		self.m = int(np.ceil(self.theta_max / 2 * 1/epsilon))
+	@property
+	def approx_poly(self):
+		return self.IA
 	
-	def __iter__(self):
-		# Divide the hypercube into 2^k segments. Each segment is describe by whether
-		# it falls on the surface of the hypercube along each dimension.
-		# E.g. the segment `(0, 1)` is the top surface of a square; `(1, 1)` is the top-right corner.
-		segments = itertools.product([0, 1], repeat = self.k)
-		points = np.tan(self.theta_max * np.linspace(0, 1, self.m + 1))/np.tan(self.theta_max)
-		
-		ranges = [points[:-1], points[-1:]]
-		# Skip the "interior" of the cube (segment represented by `{0}^k`)
-		_ = next(segments)
-		for segment in segments:
-			yield from itertools.product(*(ranges[s] for s in segment))
-	
-	def __len__(self):
-		return int(np.power(self.m + 1, self.k) - np.power(self.m, self.k))
-
-def main():
-	from tqdm import tqdm
-	from matplotlib import pyplot as plt, patches
-	from env import deep_sea_treasure
-	from common.lp import TabularSolver
-	from common.misc import deduplicate_and_sort
-	
-	# Finds an epsilon-Pareto front using linear scalarizations and plots it.
-	env = deep_sea_treasure
-	epsilon = 1 * np.array([1, 1], dtype = np.float64)
-	
-	solver = TabularSolver(env)
-	true_pf = env.true_pareto_front()
-	
-	estimated_pf = estimate_pareto_front(solver, epsilon, progress = tqdm)
-	estimated_pf = deduplicate_and_sort(estimated_pf)
-	
-	plt.ylabel("Discounted time penalty")
-	plt.xlabel("Discounted treasure value")
-	
-	# The epsilon-boxes should touch the estimated PF
-	ax = plt.gca()
-	for point in true_pf:
-		ax.add_patch(patches.Rectangle(point, -epsilon[0], -epsilon[1], facecolor = 'red', alpha = 0.1))
-	
-	plt.plot(estimated_pf[:,0], estimated_pf[:,1], 'b-')
-	plt.plot(estimated_pf[:,0], estimated_pf[:,1], 'bo', label = "Estimated PF (NLS)")
-	plt.plot(true_pf[:,0], true_pf[:,1], 'r+', label = "True PF")
-	plt.legend()
-	plt.show()
-
-if __name__ == '__main__':
-	main()
+	def update(self, solver):
+		wt = next(self.C)
+		yt = solver.solve_linear(scal.Linear(wt))
+		self.IA.add_point(yt)
+		return False

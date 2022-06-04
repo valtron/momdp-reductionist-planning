@@ -1,53 +1,23 @@
-# Transplanted from BoTorch:
-# https://github.com/pytorch/botorch/blob/main/botorch/utils/multi_objective/hypervolume.py
-
 from typing import List, Optional
 import numpy as np
 import scipy.spatial
-
 from common import dualdesc as dd
 
 def hypervolume(Y: np.ndarray, ref: np.ndarray) -> float:
 	return Hypervolume(ref)(Y)
 
-def hypervolume_convex_cdd(Y: np.ndarray, ref: np.ndarray) -> float:
-	k = Y.shape[1]
-	dt = Y.dtype
-	Rplus = np.eye(k, dtype = dt)
-	h1 = dd.VRepr(Y, -Rplus).to_h()
-	h2 = dd.VRepr(ref[None,:], Rplus).to_h()
-	v = dd.HRepr.intersect(h1, h2).to_v()
-	assert np.allclose(v.Vn, 0)
-	assert np.allclose(v.Vl, 0)
-	if len(v.Vc) <= k:
+def hypervolume_convex(Y: np.ndarray, ref: np.ndarray) -> float:
+	dv = dd.Polytope.FromGenerators(Y, -np.eye(Y.shape[1]))
+	dv.add_halfspace(-np.eye(len(ref)), -ref)
+	V, _ = dv.get_generators()
+	if len(V) < len(ref):
 		return 0
-	return scipy.spatial.ConvexHull(v.Vc).volume
-
-def hypervolume_convex_qhull(Y: np.ndarray, ref: np.ndarray) -> float:
-	import itertools
-	from scipy.spatial import ConvexHull
-	
-	assert np.all(Y >= (ref - 1e-5)), np.min(Y - ref)
-	Y = np.maximum(Y, ref)
-	
-	all_points = [[ref], Y]
-	
-	# Project each point onto each (1 .. k-1)-dimensional boundary
-	k = ref.shape[0]
-	idxs = list(range(k))
-	for i in range(1, k):
-		for boundary in itertools.combinations(idxs, i):
-			boundary = list(boundary)
-			projected = Y.copy()
-			projected[:, boundary] = ref[boundary]
-			all_points.append(projected)
-	
-	hull = ConvexHull(np.concatenate(all_points, axis = 0))
-	return hull.volume
-
-hypervolume_convex = hypervolume_convex_qhull
+	return scipy.spatial.ConvexHull(V).volume
 
 class Hypervolume:
+	# Transplanted from BoTorch:
+	# https://github.com/pytorch/botorch/blob/main/botorch/utils/multi_objective/hypervolume.py
+	
 	def __init__(self, ref: np.ndarray) -> None:
 		assert ref.ndim == 1
 		self.ref = ref
