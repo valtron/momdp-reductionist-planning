@@ -10,7 +10,7 @@ class HRepr:
 		Au: Optional[np.ndarray] = None,
 		bu: Optional[np.ndarray] = None,
 		Ae: Optional[np.ndarray] = None,
-		be: Optional[np.ndarray] = None
+		be: Optional[np.ndarray] = None,
 	) -> None:
 		assert (Au is None) == (bu is None)
 		assert (Ae is None) == (be is None)

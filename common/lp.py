@@ -42,31 +42,8 @@ class TabularSolver:
 		assert res.success, res.message
 		mu = res.x[:-1]
 		value = (mu @ self.rewards) * self.H
-		return value
-	
-	def solve_hyperplane(self, y: np.ndarray):
-		A, b = self.fp.A, self.fp.b
 		
-		n, k = self.rewards.shape
-		m = A.shape[0]
-		
-		c = np.hstack((-y / self.H, b))
-		
-		A_eq = np.vstack((np.hstack((np.ones(k), np.zeros(m))),))
-		b_eq = np.ones(1)
-		
-		A_ub = np.vstack((np.hstack((self.rewards, -A.T)),))
-		b_ub = np.zeros(n)
-		
-		bounds = [(0, None)] * k + [(None, None)] * m
-		res = linprog(c, A_ub = A_ub, b_ub = b_ub, A_eq = A_eq, b_eq = b_eq, bounds = bounds, method = 'highs')
-		assert res.success, res.message
-		
-		w, u = res.x[:k], res.x[k:]
-		const = (b @ u) * self.H
-		value = y + const - y @ w
-		
-		return w, value
+		return value, -res.ineqlin.marginals
 
 class FlowPolytope:
 	# Equality constraint on the state-action occupancy:

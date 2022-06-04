@@ -26,11 +26,11 @@ def estimate_pareto_front(solver, epsilon, *, progress = dummy_progress):
 				if close_to_any(v, verts_checked, 1e-6):
 					continue
 				verts_checked.append(v)
-				u = solver.solve_chebyshev(v, np.ones(k))
+				u, w = solver.solve_chebyshev(v, np.ones(k))
 				IA.append(u)
 				d = np.max(np.abs(u - v) / epsilon)
 				if d > 1:
-					found = u
+					found = w, u
 					break
 			
 			if found is None:
@@ -38,8 +38,7 @@ def estimate_pareto_front(solver, epsilon, *, progress = dummy_progress):
 			
 			pbar.set_postfix({ 'd': d })
 			
-			w, _ = solver.solve_hyperplane(u)
-			OA.append((w, u))
+			OA.append(found)
 			pbar.update(1)
 	
 	return np.array(IA)

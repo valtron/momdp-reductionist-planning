@@ -194,10 +194,6 @@ class CountSolverCalls:
 	def solve_chebyshev(self, r, w):
 		self.calls += 1
 		return self.impl.solve_chebyshev(r, w)
-	
-	def solve_hyperplane(self, y):
-		self.calls += 1
-		return self.impl.solve_hyperplane(y)
 
 if __name__ == '__main__':
 	main()
