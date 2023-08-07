@@ -8,6 +8,7 @@ from common.so_solver import PolytopeSolver, SOSolver
 name = "LQR"
 gamma = 1
 horizon = np.inf
+objective_names = ["Objective 1", "Objective 2", "Objective 3"]
 k = 3
 
 def pareto_front_vertices():

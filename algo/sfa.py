@@ -7,7 +7,7 @@ from sklearn import kernel_approximation
 
 from common import dualdesc as dd, misc, scalarization as scal
 
-name = "Approx"
+name = "SFA"
 color = 'g'
 deterministic = False
 inner_approximation = False
@@ -57,7 +57,7 @@ class Algo:
 		h_data = np.sum(W * Y, axis = -1)
 		mu = np.mean(h_data)
 		sd = np.std(h_data)
-		weights = np.arange(1, 1 + Phi.shape[1], dtype = np.float64)**0.5
+		weights = (self.featurizer.S[0] / self.featurizer.S)**(1/10)
 		theta_est = sd * _basis_pursuit(Phi, (h_data-mu)/sd, self.lamb, weights)
 		
 		def h_est(ws):

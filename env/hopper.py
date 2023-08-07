@@ -8,6 +8,7 @@ from common.so_solver import PolytopeSolver
 name = "Hopper"
 gamma = 1
 horizon = 100
+objective_names = ["Forward", "Jump", "Control Cost"]
 k = 3
 
 def pareto_front_vertices():
@@ -44,13 +45,13 @@ class _GymEnv(_impl.MOHopperEnv):
 	dim_action = 3
 	
 	def __init__(self, seed):
-		super().__init__(terminate_when_unhealthy = False)
+		super().__init__(terminate_when_unhealthy = False, healthy_reward = 0)
 		self._t = None
 		self.reset(seed)
 	
-	def reset(self):
+	def reset(self, seed = None):
 		self._t = 0
-		return super().reset()
+		return super().reset(seed = seed)
 	
 	def step(self, action):
 		self._t += 1

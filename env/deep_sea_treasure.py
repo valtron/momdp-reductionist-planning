@@ -11,6 +11,7 @@ from common.so_solver import TabularSolver
 name = "DeepSeaTreasure"
 gamma = 0.98
 horizon = np.inf
+objective_names = ["Time Penalty", "Treasure Value"]
 k = 2
 
 def pareto_front_vertices():

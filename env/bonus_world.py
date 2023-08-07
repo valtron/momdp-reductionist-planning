@@ -11,6 +11,7 @@ from common.so_solver import TabularSolver
 name = "BonusWorld"
 gamma = 0.95
 horizon = np.inf
+objective_names = ["Objective 1", "Objective 2", "Time Penalty"]
 k = 3
 
 def pareto_front_vertices():
