@@ -1,7 +1,7 @@
 from typing import Tuple
 import numpy as np
-
-from common import dualdesc as dd, scalarization as scal
+import dualdesc as dd
+from common import scalarization as scal
 
 name = "OLS"
 color = 'r'

@@ -1,8 +1,8 @@
 import abc
 import numpy as np
 from scipy.optimize import linprog
-
-from common import scalarization as scal, dualdesc as dd
+import dualdesc as dd
+from common import scalarization as scal
 
 Outcome = np.ndarray
 

@@ -1,6 +1,6 @@
 import numpy as np
-
-from common import dualdesc as dd, misc, scalarization as scal
+import dualdesc as dd
+from common import misc, scalarization as scal
 
 name = "NLS"
 color = 'b'

@@ -3,8 +3,6 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 
-from common import dualdesc as dd
-
 def dummy_progress(*args, **kwargs):
 	kwargs['disable'] = True
 	return tqdm(*args, **kwargs)

@@ -1,7 +1,7 @@
 from typing import List, Optional
 import numpy as np
 import scipy.spatial
-from common import dualdesc as dd
+import dualdesc as dd
 
 def hypervolume(Y: np.ndarray, ref: np.ndarray) -> float:
 	return Hypervolume(ref)(Y)

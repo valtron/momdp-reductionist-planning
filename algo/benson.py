@@ -1,6 +1,6 @@
 import numpy as np
-
-from common import dualdesc as dd, scalarization as scal
+import dualdesc as dd
+from common import scalarization as scal
 from common.misc import close_to_any
 
 name = "Benson"

@@ -1,8 +1,8 @@
 import numpy as np
 import scipy
 from tqdm.auto import tqdm
-
-from common import misc, dualdesc as dd, scalarization as scal
+import dualdesc as dd
+from common import misc, scalarization as scal
 from common.so_solver import PolytopeSolver, SOSolver
 
 name = "LQR"

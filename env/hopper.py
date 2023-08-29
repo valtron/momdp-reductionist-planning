@@ -1,8 +1,8 @@
 import numpy as np
 from tqdm.auto import tqdm
 from mo_gymnasium.envs.mujoco import hopper as _impl
-
-from common import misc, dualdesc as dd
+import dualdesc as dd
+from common import misc
 from common.so_solver import PolytopeSolver
 
 name = "Hopper"

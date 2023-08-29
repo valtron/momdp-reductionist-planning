@@ -1,7 +1,6 @@
 import sys
 import numpy as np
-
-from common import dualdesc as dd
+import dualdesc as dd
 from common.so_solver import TabularSolver
 
 # "Bonus World" environment from

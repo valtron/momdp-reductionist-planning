@@ -10,6 +10,14 @@ from mpl_toolkits.mplot3d import art3d
 from tqdm.auto import tqdm
 import funcli
 
+import os
+if os.name == 'nt':
+	import ctypes
+	from pathlib import Path
+	# TODO: figure out why the default `winmode` flags don't work
+	ctypes.CDLL(str(Path(np.__path__[0]).parent / 'pyparma/ppl.cp39-win_amd64.pyd'), winmode = 0)
+import dualdesc as dd
+
 from env import deep_sea_treasure, bonus_world, lqr, hopper
 from common.hypervolume import hypervolume_convex
 from common import dualdesc as dd, misc, pareto

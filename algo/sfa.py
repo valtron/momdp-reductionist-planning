@@ -4,8 +4,8 @@ from tqdm.auto import tqdm
 from matplotlib import pyplot as plt
 import cvxpy as cp
 from sklearn import kernel_approximation
-
-from common import dualdesc as dd, misc, scalarization as scal
+import dualdesc as dd
+from common import misc, scalarization as scal
 
 name = "SFA"
 color = 'g'
