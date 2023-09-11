@@ -18,12 +18,12 @@ if os.name == 'nt':
 	ctypes.CDLL(str(Path(np.__path__[0]).parent / 'pyparma/ppl.cp39-win_amd64.pyd'), winmode = 0)
 import dualdesc as dd
 
-from env import deep_sea_treasure, bonus_world, lqr, hopper
+from env import deep_sea_treasure, bonus_world, hopper, lqr
 from common.hypervolume import hypervolume_convex
-from common import dualdesc as dd, misc, pareto
+from common import misc, pareto
 from algo import benson, nls, ols, sfa
 
-ENVS = [deep_sea_treasure, bonus_world, lqr, hopper]
+ENVS = [deep_sea_treasure, bonus_world, hopper, lqr]
 ALGOS = [nls, ols, benson, sfa]
 
 def main(seeds: int = 1, figdir: Optional[Path] = None):

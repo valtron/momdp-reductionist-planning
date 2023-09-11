@@ -17,17 +17,13 @@ class Algo:
 		k = len(lo)
 		
 		t = (120 if k == 2 else 15)
-		gamma = 0.4
 		self.lamb = 1e-6
 		
 		self.k = k
 		self.lo = lo
 		self.W = []
 		self.Y = []
-		self.Phi = []
 		self.C = rng.permutation(misc.grid_simplex_covering(t, k))
-		self.featurizer = _OrthoNystroem('rbf', gamma = gamma, n_components = len(self.C))
-		self.featurizer.fit(self.C)
 		self._approx_poly = None
 	
 	@property
@@ -40,7 +36,6 @@ class Algo:
 		self._approx_poly = None
 		self.W.append(self.C[len(self.W)])
 		self.Y.append(solver.solve_linear(scal.Linear(self.W[-1])))
-		self.Phi.append(self.featurizer.transform(self.W[-1:])[0])
 		return False
 	
 	def _build_poly(self):
@@ -52,17 +47,20 @@ class Algo:
 				Y = self.lo[None,:]
 			return dd.Polytope.FromGenerators(Y, -np.eye(self.k))
 		
-		Phi = np.array(self.Phi)
-		
 		h_data = np.sum(W * Y, axis = -1)
 		mu = np.mean(h_data)
 		sd = np.std(h_data)
-		weights = (self.featurizer.S[0] / self.featurizer.S)**(1/10)
-		theta_est = sd * _basis_pursuit(Phi, (h_data-mu)/sd, self.lamb, weights)
+		h_std = (h_data - mu)/sd
+		
+		l = _find_lengthscale(self.C[:len(W)], h_std, 0.1, 10, 20)
+		featurizer = _OrthoNystroem('rbf', gamma = 0.5/l**2)
+		featurizer.fit(self.C)
+		
+		weights = (featurizer.S[0] / featurizer.S)**(1/10)
+		theta_est = sd * _basis_pursuit(featurizer.transform(W), h_std, self.lamb, weights)
 		
 		def h_est(ws):
-			Phi = self.featurizer.transform(ws)
-			return Phi @ theta_est + mu
+			return featurizer.transform(ws) @ theta_est + mu
 		
 		ws = misc.grid_simplex_covering(500 if self.k == 2 else 25, self.k)
 		hs = h_est(ws)
@@ -76,24 +74,22 @@ class Algo:
 class _OrthoNystroem(kernel_approximation.Nystroem):
 	def fit(self, X, y = None):
 		X = self._validate_data(X, accept_sparse = 'csr')
-		n_samples = X.shape[0]
-		n_components = min(n_samples, self.n_components)
-		basis_inds = np.arange(n_components)
-		
-		basis_kernel = kernel_approximation.pairwise_kernels(
+		K = kernel_approximation.pairwise_kernels(
 			X,
 			metric=self.kernel,
 			filter_params=True,
 			n_jobs=self.n_jobs,
 			**self._get_kernel_params(),
 		)
-		
-		U, S, Vh = kernel_approximation.svd(basis_kernel)
-		S = np.maximum(S, 1e-8)
+		S, U = np.linalg.eigh(K)
+		idxs = (S >= 1e-13)
+		S = S[idxs]
+		U = U[:,idxs]
+		n_components = len(S)
 		self.S = S
-		self.normalization_ = (1/S)[:,None] * Vh
+		self.normalization_ = (U/S).T
 		self.components_ = X
-		self.component_indices_ = basis_inds
+		self.component_indices_ = np.arange(n_components)
 		self._n_features_out = n_components
 		return self
 
@@ -109,3 +105,24 @@ def _basis_pursuit(A, C, lamb, weights = None):
 	prob.solve(warm_start = True)
 	assert theta.value is not None, prob.status
 	return theta.value
+
+def _find_lengthscale(X, y, lmin, lmax, n):
+	ls = np.geomspace(lmin, lmax, n)
+	scores = []
+	
+	C = np.linalg.norm(X[:,:,None] - X.T, axis = 1)**2
+	
+	for l in ls:
+		K = (-0.5/l**2) * C
+		np.exp(K, out = K)
+		S, U = np.linalg.eigh(K)
+		idxs = (S >= 1e-13)
+		S = S[idxs]
+		U = U[:,idxs]
+		lambdas_i = 1/S
+		Ki = U @ np.diag(lambdas_i) @ U.T
+		score = np.linalg.norm(Ki @ y)/np.mean(lambdas_i)
+		scores.append(score)
+	scores = np.array(scores)
+	
+	return ls[np.argmin(scores)]
